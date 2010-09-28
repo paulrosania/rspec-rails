@@ -50,10 +50,10 @@ describe "mock_model(RealModel)" do
   end
 
   describe "destroy" do
-    it "sets id to nil" do
+    it "sets persisted to false" do
       model = mock_model(MockableModel)
       model.destroy
-      model.id.should be_nil
+      model.should_not be_persisted
     end
   end
 
@@ -181,21 +181,33 @@ describe "mock_model(RealModel)" do
   end
 
   describe "#persisted?" do
-    context "with default id" do
+    context "with default identifier" do
       it "returns true" do
         mock_model(MockableModel).should be_persisted
       end
     end
 
-    context "with explicit id" do
+    context "with explicit identifier via :id" do
       it "returns true" do
         mock_model(MockableModel, :id => 37).should be_persisted
       end
     end
 
-    context "with id nil" do
+    context "with explicit identifier via :to_param" do
+      it "returns true" do
+        mock_model(MockableModel, :to_param => 37).should be_persisted
+      end
+    end
+
+    context "with nil identifier via :id" do
       it "returns false" do
         mock_model(MockableModel, :id => nil).should_not be_persisted
+      end
+    end
+
+    context "with nil identifier via :to_param" do
+      it "returns false" do
+        mock_model(MockableModel, :to_param => nil).should_not be_persisted
       end
     end
   end
@@ -218,6 +230,11 @@ describe "mock_model(RealModel)" do
     it "says it is a new record" do
       m = mock_model(MockableModel)
       m.as_new_record.should be_new_record
+    end
+
+    it "says it is not persisted" do
+      m = mock_model(MockableModel)
+      m.as_new_record.should_not be_persisted
     end
 
     it "has a nil id" do

@@ -5,26 +5,28 @@ module RSpec
 
     module Mocks
 
-      module InstanceMethods
-        def valid?
-          true
+      module ActiveModelInstanceMethods
+        def as_new_record
+          self.stub(:to_param) { nil }
+          self
         end
 
-        def as_new_record
-          self.stub(:id) { nil }
-          self
+        def persisted?
+          !!to_param
+        end
+      end
+
+      module ActiveRecordInstanceMethods
+        def id
+          to_param ? to_param.to_i : nil
         end
 
         def new_record?
           !persisted?
         end
 
-        def persisted?
-          !!id
-        end
-
         def destroy
-          self.stub(:id) { nil }
+          self.stub(:to_param) { nil }
         end
       end
 
@@ -61,23 +63,31 @@ It received #{model_class.inspect}
 EOM
         end
 
-        id = options_and_stubs.has_key?(:id) ? options_and_stubs[:id] : next_id
+        param = if options_and_stubs.has_key?(:to_param)
+                  options_and_stubs[:to_param] ? options_and_stubs[:to_param].to_s : nil
+                elsif options_and_stubs.has_key?(:id)
+                  options_and_stubs[:id] ? options_and_stubs[:id].to_s : nil
+                else
+                  next_id
+                end
         options_and_stubs = options_and_stubs.reverse_merge({
-          :id => id,
+          :to_param => param,
           :destroyed? => false,
           :marked_for_destruction? => false
         })
-        derived_name = "#{model_class.name}_#{id}"
+        derived_name = "#{model_class.name}_#{param}"
         m = mock(derived_name, options_and_stubs)
-        m.extend InstanceMethods
-        m.extend ActiveModel::Conversion
-        errors = ActiveModel::Errors.new(m)
-        [:save, :update_attributes].each do |key|
-          if options_and_stubs[key] == false
-            errors.stub(:empty?) { false }
+        m.extend ActiveModelInstanceMethods
+        m.singleton_class.__send__ :include, ActiveModel::Conversion
+        m.singleton_class.__send__ :include, ActiveModel::Validations
+        if RSpec::Rails::using_active_record?
+          m.extend ActiveRecordInstanceMethods
+          [:save, :update_attributes].each do |key|
+            if options_and_stubs[key] == false
+              m.errors.stub(:empty?) { false }
+            end
           end
         end
-        m.stub(:errors) { errors }
         m.__send__(:__mock_proxy).instance_eval(<<-CODE, __FILE__, __LINE__)
           def @object.is_a?(other)
             #{model_class}.ancestors.include?(other)
@@ -95,7 +105,7 @@ EOM
             #{model_class}
           end
           def @object.to_s
-            "#{model_class.name}_#{id}"
+            "#{model_class.name}_#{to_param}"
           end
         CODE
         yield m if block_given?
